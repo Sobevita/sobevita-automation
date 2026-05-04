@@ -3,10 +3,10 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_limiter.errors import RateLimitExceeded
+from functools import wraps
 import os
 import json
 import anthropic
-from functools import wraps
 
 app = Flask(__name__)
 CORS(app)
@@ -18,17 +18,16 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-# API Key Configuration
-API_KEY = os.environ.get("API_KEY", "your-secret-api-key-here")
+API_KEY = os.environ.get("API_KEY")
 
 def require_api_key(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-                    api_key = request.headers.get("X-API-Key")
-                    if not api_key or api_key != API_KEY:
-                                    return jsonify(status="error", message="Unauthorized: Invalid or missing API key"), 401
-                                return f(*args, **kwargs)
-                return decorated_function
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get("X-API-Key")
+        if not api_key or api_key != API_KEY:
+            return jsonify(status="error", message="Unauthorized: Invalid or missing API key"), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
 @app.errorhandler(RateLimitExceeded)
 def handle_rate_limit(e):
@@ -59,7 +58,7 @@ def process_order():
 
 @app.route("/sync-tradelle", methods=["POST"])
 @limiter.limit("10 per minute")
-    @require_api_key
+@require_api_key
 def sync_tradelle():
     try:
         data = request.get_json()
@@ -75,7 +74,7 @@ def sync_tradelle():
         )
 
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-5-20250929",
             max_tokens=1024,
             messages=[
                 {
@@ -136,7 +135,7 @@ def ask_claude():
         system_prompt = system_prompts.get(context, system_prompts["general"])
 
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-5-20250929",
             max_tokens=1024,
             system=system_prompt,
             messages=[{"role": "user", "content": question}],
