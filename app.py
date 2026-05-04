@@ -7,9 +7,14 @@ from functools import wraps
 import os
 import json
 import anthropic
+import logging
+import time
 
 app = Flask(__name__)
 CORS(app)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 limiter = Limiter(
     get_remote_address,
@@ -28,6 +33,16 @@ def require_api_key(f):
             return jsonify(status="error", message="Unauthorized: Invalid or missing API key"), 401
         return f(*args, **kwargs)
     return decorated_function
+
+@app.before_request
+def start_timer():
+    request.start_time = time.time()
+
+@app.after_request
+def log_request(response):
+    elapsed = (time.time() - request.start_time) * 1000
+    logger.info("%s %s %s %.2fms", request.method, request.path, response.status_code, elapsed)
+    return response
 
 @app.errorhandler(RateLimitExceeded)
 def handle_rate_limit(e):
@@ -141,10 +156,11 @@ def ask_claude():
             messages=[{"role": "user", "content": question}],
         )
 
-        response_text = message.content[0].text
-
         return jsonify(
-            status="success", question=question, context=context, answer=response_text
+            status="success",
+            question=question,
+            context=context,
+            answer=message.content[0].text
         ), 200
 
     except Exception as e:
