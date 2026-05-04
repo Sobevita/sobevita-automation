@@ -6,6 +6,7 @@ from flask_limiter.errors import RateLimitExceeded
 import os
 import json
 import anthropic
+from functools import wraps
 
 app = Flask(__name__)
 CORS(app)
@@ -16,6 +17,18 @@ limiter = Limiter(
     default_limits=[],
     storage_uri="memory://"
 )
+
+# API Key Configuration
+API_KEY = os.environ.get("API_KEY", "your-secret-api-key-here")
+
+def require_api_key(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+                    api_key = request.headers.get("X-API-Key")
+                    if not api_key or api_key != API_KEY:
+                                    return jsonify(status="error", message="Unauthorized: Invalid or missing API key"), 401
+                                return f(*args, **kwargs)
+                return decorated_function
 
 @app.errorhandler(RateLimitExceeded)
 def handle_rate_limit(e):
@@ -46,6 +59,7 @@ def process_order():
 
 @app.route("/sync-tradelle", methods=["POST"])
 @limiter.limit("10 per minute")
+    @require_api_key
 def sync_tradelle():
     try:
         data = request.get_json()
@@ -104,6 +118,7 @@ def sync_tradelle():
 
 @app.route("/ask-claude", methods=["POST"])
 @limiter.limit("10 per minute")
+@require_api_key
 def ask_claude():
     try:
         data = request.get_json()
