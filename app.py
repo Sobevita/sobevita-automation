@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import os
+import json
 import anthropic
 
 app = Flask(__name__)
@@ -35,7 +36,7 @@ def sync_tradelle():
         )
 
         message = client.messages.create(
-            model='claude-opus-4-5',
+            model='claude-sonnet-4-20250514',
             max_tokens=1024,
             messages=[
                 {
@@ -54,7 +55,6 @@ def sync_tradelle():
             ]
         )
 
-        import json
         raw_text = message.content[0].text.strip()
         if raw_text.startswith('```'):
             raw_text = raw_text.split('```', 2)[1]
@@ -75,6 +75,49 @@ def sync_tradelle():
             products_synced=len(products),
             analysis={'raw': message.content[0].text}
         ), 200
+    except Exception as e:
+        return jsonify(status='error', message=str(e)), 500
+
+@app.route('/ask-claude', methods=['POST'])
+def ask_claude():
+    try:
+        data = request.get_json()
+        question = data.get('question')
+        context = data.get('context', 'general')
+
+        if not question:
+            return jsonify(status='error', message='Question is required'), 400
+
+        # Build context-aware system prompt
+        system_prompts = {
+            'sobevita': 'Du bist ein hilfreicher KI-Assistent für Sobevita.de, einen deutschen E-Commerce Store für Küchenprodukte. Du hast Expertise in Produktempfehlungen, Lagerverwaltung und Kundenservice. Antworte auf Deutsch, professionell und hilfreich. Halte Antworten unter 150 Worten.',
+            'general': 'You are a helpful and knowledgeable assistant. Answer questions clearly and concisely.'
+        }
+
+        system_prompt = system_prompts.get(context, system_prompts['general'])
+
+        # Call Claude API
+        message = client.messages.create(
+            model='claude-sonnet-4-20250514',
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[
+                {
+                    'role': 'user',
+                    'content': question
+                }
+            ]
+        )
+
+        response_text = message.content[0].text
+
+        return jsonify(
+            status='success',
+            question=question,
+            context=context,
+            answer=response_text
+        ), 200
+
     except Exception as e:
         return jsonify(status='error', message=str(e)), 500
 
