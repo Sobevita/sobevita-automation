@@ -1,21 +1,40 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_limiter.errors import RateLimitExceeded
 import os
 import json
 import anthropic
-from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://"
+)
+
+@app.errorhandler(RateLimitExceeded)
+def handle_rate_limit(e):
+    return jsonify(
+        status="error",
+        message=f"Rate limit exceeded: {e.description}. Please try again later."
+    ), 429
 
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 
 @app.route("/health", methods=["GET"])
+@limiter.limit("60 per minute")
 def health():
     return jsonify(status="healthy"), 200
 
 
 @app.route("/process-order", methods=["POST"])
+@limiter.limit("60 per minute")
 def process_order():
     try:
         data = request.get_json()
@@ -26,6 +45,7 @@ def process_order():
 
 
 @app.route("/sync-tradelle", methods=["POST"])
+@limiter.limit("10 per minute")
 def sync_tradelle():
     try:
         data = request.get_json()
@@ -41,7 +61,7 @@ def sync_tradelle():
         )
 
         message = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-sonnet-20241022",
             max_tokens=1024,
             messages=[
                 {
@@ -83,6 +103,7 @@ def sync_tradelle():
 
 
 @app.route("/ask-claude", methods=["POST"])
+@limiter.limit("10 per minute")
 def ask_claude():
     try:
         data = request.get_json()
@@ -92,7 +113,6 @@ def ask_claude():
         if not question:
             return jsonify(status="error", message="Question is required"), 400
 
-        # Build context-aware system prompt
         system_prompts = {
             "sobevita": "Du bist ein hilfreicher KI-Assistent für Sobevita.de, einen deutschen E-Commerce Store für Küchenprodukte. Du hast Expertise in Produktempfehlungen, Lagerverwaltung und Kundenservice. Antworte auf Deutsch, professionell und hilfreich. Halte Antworten unter 150 Worten.",
             "general": "You are a helpful and knowledgeable assistant. Answer questions clearly and concisely.",
@@ -100,9 +120,8 @@ def ask_claude():
 
         system_prompt = system_prompts.get(context, system_prompts["general"])
 
-        # Call Claude API
         message = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-3-5-sonnet-20241022",
             max_tokens=1024,
             system=system_prompt,
             messages=[{"role": "user", "content": question}],
