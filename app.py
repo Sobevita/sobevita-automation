@@ -42,7 +42,7 @@ else:
         traceback.print_exc()
         claude_client = None
 
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-4-6")
 PORT = int(os.environ.get("PORT", 8080))
 
 logger.info(f"🚀 Starting Sobevita Automation")
