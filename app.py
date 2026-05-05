@@ -34,9 +34,6 @@ limiter = Limiter(
 
 API_KEY = os.environ.get("API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-SHOPIFY_ACCESS_TOKEN = os.environ.get("SHOPIFY_ACCESS_TOKEN")
-SHOPIFY_STORE = os.environ.get("SHOPIFY_STORE", "sobevita.myshopify.com")
-SHOPIFY_API_VERSION = os.environ.get("SHOPIFY_API_VERSION", "2024-01")
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
 
 REQUEST_TIMEOUT = (5, 30)
@@ -48,8 +45,6 @@ if not API_KEY:
 if not ANTHROPIC_API_KEY:
     logger.warning("ANTHROPIC_API_KEY env var not set - AI features will use fallbacks")
 
-if not SHOPIFY_ACCESS_TOKEN:
-    logger.warning("SHOPIFY_ACCESS_TOKEN env var not set - Shopify writes will fail")
 
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
@@ -80,7 +75,6 @@ def health():
     return jsonify(
         status="healthy",
         service="sobevita-automation",
-        shopify_configured=bool(SHOPIFY_ACCESS_TOKEN),
         ai_configured=bool(claude_client),
     ), 200
 
