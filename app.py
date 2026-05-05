@@ -52,6 +52,7 @@ def build_shopify_session():
 shopify_session = build_shopify_session()
 
 
+@app.route("/", methods=["GET"])
 def health():
     return jsonify(
         status="healthy",
