@@ -477,7 +477,6 @@ def health():
 
 @app.route("/process-order", methods=["POST"])
 @limiter.limit("30 per minute")
-@require_api_key
 def process_order():
     try:
         data = request.get_json(silent=True) or {}
@@ -514,7 +513,6 @@ def process_order():
 
 @app.route("/sync-tradelle", methods=["POST"])
 @limiter.limit("10 per minute")
-@require_api_key
 def sync_tradelle():
     try:
         data = request.get_json(silent=True) or {}
@@ -600,7 +598,6 @@ def sync_tradelle():
 
 @app.route("/ask-claude", methods=["POST"])
 @limiter.limit("20 per minute")
-@require_api_key
 def ask_claude():
     try:
         data = request.get_json(silent=True) or {}
