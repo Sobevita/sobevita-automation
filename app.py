@@ -24,13 +24,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sobevita-automation")
 
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=[],
-    storage_uri="memory://",
-    headers_enabled=True,
-)
 
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
 
