@@ -1,3 +1,5 @@
+Ctrl + W
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -73,7 +75,27 @@ def build_shopify_session():
 
 shopify_session = build_shopify_session()
 
+
 def require_api_key(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = os.environ.get("API_KEY")
+        provided = request.headers.get("X-API-Key")
+
+        if not api_key:
+            logger.error("API_KEY missing on server")
+            return jsonify(status="error", message="Server misconfigured"), 500
+
+        if not provided or provided != api_key:
+            logger.warning("Unauthorized request: invalid API key")
+            return jsonify(status="error", message="Unauthorized"), 401
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+Ctrl + O
+
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not API_KEY:
