@@ -1,10 +1,6 @@
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from flask_limiter.errors import RateLimitExceeded
-from functools import wraps
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import os
