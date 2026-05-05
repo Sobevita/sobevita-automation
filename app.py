@@ -63,7 +63,6 @@ def build_shopify_session():
 shopify_session = build_shopify_session()
 
 
-@limiter.limit("120 per minute")
 def health():
     return jsonify(
         status="healthy",
@@ -72,7 +71,6 @@ def health():
     ), 200
 
 @app.route("/process-order", methods=["POST"])
-@limiter.limit("30 per minute")
 def process_order():
     try:
         data = request.get_json(silent=True) or {}
@@ -108,7 +106,6 @@ def process_order():
         return jsonify(status="error", message="Failed to process product"), 500
 
 @app.route("/sync-tradelle", methods=["POST"])
-@limiter.limit("10 per minute")
 def sync_tradelle():
     try:
         data = request.get_json(silent=True) or {}
@@ -193,7 +190,6 @@ def sync_tradelle():
         return jsonify(status="error", message="Failed to sync products"), 500
 
 @app.route("/ask-claude", methods=["POST"])
-@limiter.limit("20 per minute")
 def ask_claude():
     try:
         data = request.get_json(silent=True) or {}
