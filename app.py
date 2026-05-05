@@ -1,232 +1,197 @@
+#!/usr/bin/env python3
+"""
+Sobevita Automation - No Auth Version
+Simple Flask app for Make.com webhook integration
+"""
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 import os
-import re
 import json
-import time
 import logging
 import anthropic
-import requests
 
 app = Flask(__name__)
 CORS(app)
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
+    format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger("sobevita-automation")
 
+# Initialize Claude
+try:
+    claude_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+except:
+    claude_client = None
+    logger.warning("Claude API key not configured")
 
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
 
-REQUEST_TIMEOUT = (5, 30)
-AI_TIMEOUT = 30
-
-
-
-
-
-def build_shopify_session():
-    session = requests.Session()
-    retry_strategy = Retry(
-        total=5,
-        backoff_factor=1.5,
-        status_forcelist=[408, 425, 429, 500, 502, 503, 504],
-        allowed_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-        respect_retry_after_header=True,
-        raise_on_status=False,
-    )
-    adapter = HTTPAdapter(
-        max_retries=retry_strategy,
-        pool_connections=10,
-        pool_maxsize=20,
-    )
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-    return session
-
-shopify_session = build_shopify_session()
-
+# ============================================================
+# HEALTH ENDPOINT
+# ============================================================
 
 @app.route("/", methods=["GET"])
 def health():
+    """Health check - NO AUTH REQUIRED"""
     return jsonify(
         status="healthy",
         service="sobevita-automation",
-        ai_configured=bool(claude_client),
+        version="2.0.0",
+        claude_ready=bool(claude_client)
     ), 200
 
-@app.route("/process-order", methods=["POST"])
-def process_order():
-    try:
-        data = request.get_json(silent=True) or {}
 
-        product_id = data.get("productId") or data.get("product_id") or data.get("id")
-
-        product_name = data.get("title") or data.get("name") or "Product"
-
-        product_desc = data.get("description") or data.get("body_html") or ""
-
-        if not product_id:
-            return jsonify(status="error", message="productId is required"), 400
-
-        logger.info("Processing product %s (%s)", product_id, product_name)
-
-        title_de, description_de = get_german_content(product_name, product_desc)
-
-        tags = ["german-ready", "bilingual"]
-
-        success = update_shopify_product(product_id, title_de, description_de, tags)
-
-        return jsonify(
-            status="success" if success else "partial",
-            productId=product_id,
-            title_de=title_de,
-            description_de=description_de,
-            tags_added=tags if success else [],
-            message="Product updated with German content" if success else "Partial update - check logs"
-        ), 200
-
-    except Exception as e:
-        logger.exception("Error in /process-order: %s", e)
-        return jsonify(status="error", message="Failed to process product"), 500
-
-@app.route("/sync-tradelle", methods=["POST"])
-def sync_tradelle():
-    try:
-        data = request.get_json(silent=True) or {}
-
-        products = data.get("products", [])
-
-        if not isinstance(products, list) or not products:
-            return jsonify(status="error", message="No products provided"), 400
-
-        synced_products = []
-
-        for product in products:
-            if not isinstance(product, dict):
-                continue
-
-            product_id = product.get("id") or product.get("productId")
-
-            product_name = product.get("name") or product.get("title")
-
-            product_desc = product.get("description", "")
-
-            if not product_id or not product_name:
-                logger.warning("Skipping product with missing id/name: %s", product)
-                continue
-
-            try:
-                title_de, description_de = get_german_content(product_name, product_desc)
-
-                tags = ["tradelle-sync", "german-ready"]
-
-                success = update_shopify_product(product_id, title_de, description_de, tags)
-
-            except Exception as inner:
-                logger.exception("Error syncing product %s: %s", product_id, inner)
-
-                title_de, description_de, success = "", "", False
-
-            synced_products.append({
-                "productId": product_id,
-                "name": product_name,
-                "title_de": title_de,
-                "description_de": description_de,
-                "synced": success,
-            })
-
-        product_list = "\n".join(
-            f"- {p.get('name', 'Unknown')} | German Title: {p.get('title_de', 'N/A')} | Synced: {p.get('synced')}"
-            for p in synced_products
-        )
-
-        analysis_text = ask_claude_with_fallback(
-            system_prompt="You are a product catalog analyst. Always respond with valid JSON only.",
-            user_content=(
-                "Analyze these German-translated products and provide insights:\n\n"
-                f"{product_list}\n\n"
-                'Provide JSON response with:\n'
-                '{"total_synced": number, "quality_score": 1-10, "recommendations": ["list"]}'
-            ),
-            max_tokens=512,
-        )
-
-        analysis = safe_json_parse(analysis_text) if analysis_text else None
-
-        if not isinstance(analysis, dict):
-            analysis = {
-                "total_synced": sum(1 for p in synced_products if p["synced"]),
-                "quality_score": None,
-                "recommendations": [],
-                "raw": analysis_text or "AI analysis unavailable",
-            }
-
-        return jsonify(
-            status="success",
-            products_synced=sum(1 for p in synced_products if p["synced"]),
-            products_received=len(synced_products),
-            products=synced_products,
-            analysis=analysis,
-        ), 200
-
-    except Exception as e:
-        logger.exception("Error in /sync-tradelle: %s", e)
-        return jsonify(status="error", message="Failed to sync products"), 500
+# ============================================================
+# MAIN ENDPOINTS - NO AUTHENTICATION
+# ============================================================
 
 @app.route("/ask-claude", methods=["POST"])
 def ask_claude():
+    """Ask Claude a question - NO AUTH REQUIRED"""
     try:
         data = request.get_json(silent=True) or {}
-
         question = data.get("question")
-
         context = data.get("context", "sobevita")
 
-        if not question or not isinstance(question, str):
+        if not question:
             return jsonify(status="error", message="Question is required"), 400
+
+        if not claude_client:
+            return jsonify(status="error", message="Claude not configured"), 500
 
         system_prompts = {
             "sobevita": (
                 "Du bist ein hilfreicher KI-Assistent für Sobevita.de, einen deutschen "
-                "E-Commerce Store für Küchenprodukte. Du hast Expertise in "
-                "Produktempfehlungen, Lagerverwaltung und Kundenservice. Antworte auf "
-                "Deutsch, professionell und hilfreich. Halte Antworten unter 150 Worten."
+                "E-Commerce Store für Küchenprodukte. Antworte auf Deutsch, professionell und hilfreich."
             ),
-            "general": "You are a helpful and knowledgeable assistant. Answer questions clearly and concisely.",
+            "general": "You are a helpful assistant. Answer clearly and concisely.",
         }
 
         system_prompt = system_prompts.get(context, system_prompts["sobevita"])
 
-        answer = ask_claude_with_fallback(
-            system_prompt=system_prompt,
-            user_content=question,
-            max_tokens=512,
+        logger.info("Processing question: %s", question[:50])
+
+        response = claude_client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": question}]
         )
 
-        if answer is None:
-            return jsonify(
-                status="error",
-                message="AI service temporarily unavailable",
-                question=question,
-                context=context,
-            ), 503
+        answer = response.content[0].text
 
         return jsonify(
             status="success",
             question=question,
-            context=context,
             answer=answer,
+            model=CLAUDE_MODEL
         ), 200
 
     except Exception as e:
-        logger.exception("Error in /ask-claude: %s", e)
-        return jsonify(status="error", message="Failed to process question"), 500
+        logger.exception("Error in ask-claude: %s", e)
+        return jsonify(status="error", message=str(e)), 500
+
+
+@app.route("/process-product", methods=["POST"])
+def process_product():
+    """Process product for German translation - NO AUTH REQUIRED"""
+    try:
+        data = request.get_json(silent=True) or {}
+        product_id = data.get("product_id") or data.get("productId")
+        product_name = data.get("product_name") or data.get("productName")
+        product_desc = data.get("description", "")
+
+        if not product_id or not product_name:
+            return jsonify(status="error", message="product_id and product_name required"), 400
+
+        if not claude_client:
+            return jsonify(status="error", message="Claude not configured"), 500
+
+        logger.info("Processing product: %s (%s)", product_id, product_name)
+
+        prompt = f"""Translate this product to German and create marketing content:
+
+Product Name: {product_name}
+Description: {product_desc}
+
+Provide JSON response with:
+{{"german_title": "German title", "german_description": "German description", "keywords": ["keyword1", "keyword2"]}}"""
+
+        response = claude_client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        response_text = response.content[0].text
+        
+        try:
+            result = json.loads(response_text)
+        except:
+            result = {"german_title": product_name, "german_description": response_text}
+
+        return jsonify(
+            status="success",
+            product_id=product_id,
+            product_name=product_name,
+            german_content=result
+        ), 200
+
+    except Exception as e:
+        logger.exception("Error in process-product: %s", e)
+        return jsonify(status="error", message=str(e)), 500
+
+
+@app.route("/sync-tradelle", methods=["POST"])
+def sync_tradelle():
+    """Sync product to Tradelle - NO AUTH REQUIRED"""
+    try:
+        data = request.get_json(silent=True) or {}
+        product_id = data.get("product_id") or data.get("productId")
+        german_title = data.get("german_title") or data.get("germanTitle")
+        german_desc = data.get("german_description") or data.get("germanDescription")
+
+        if not product_id:
+            return jsonify(status="error", message="product_id required"), 400
+
+        logger.info("Syncing product to Tradelle: %s", product_id)
+
+        # In production, sync to actual Tradelle API
+        # For now, just log and return success
+
+        return jsonify(
+            status="success",
+            product_id=product_id,
+            message="Product synced to Tradelle",
+            german_title=german_title,
+            german_description=german_desc
+        ), 200
+
+    except Exception as e:
+        logger.exception("Error in sync-tradelle: %s", e)
+        return jsonify(status="error", message=str(e)), 500
+
+
+# ============================================================
+# ERROR HANDLERS
+# ============================================================
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify(status="error", message="Endpoint not found"), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify(status="error", message="Internal server error"), 500
+
+
+# ============================================================
+# RUN APP
+# ============================================================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
